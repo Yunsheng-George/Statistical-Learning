@@ -1,0 +1,168 @@
+---
+title: "10.SupportVectorMachine"
+author: "Yunsheng Lu"
+date: "2023-01-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Support Vector Classifier
+
+Unless specifically mentioned, we assume the response to be two-classed, and first of all, we supposed that the observations could be separated by a hyperplane.
+
+### Maximal Margin Classifier
+
+For a given hyperplane $H \subseteq \mathbb{R}$, we compute the distance of each observation to the hyperplane, and margin $M:= \min_x d(x,H)$, and maximal margin classifier is the one with a hyperplane with the largest margin. We hope the margin is the largest for both the training and the testing data. The following is an example of the maximal margin classifier.
+
+![Alt text](/Users/luyunsheng/Desktop/Winter Stat ML/MMC.png)
+
+In the case of Maximal Margin Classifer, the support vectors are the ones with the minimal distance away from the hyperplane. (In the graph above, there are three). In any case, in fact, only supported vectors could affect the results for the classifier, because any change of the other observations would not change the hyperplane we chose unless it's or it will become a support vector.
+
+We let the response be two-classed $\{1,-1\}$ and $M $ be the margin of the hyperplane. Then finding the maximal margin hyperplane is equivalent to maximize $M$ while subject to the condition: $\sum \beta_j^2=1$ and $y_i(\beta_0+\beta_1x_{i1}+\dots+\beta_px_{ip}) \geq M$. Here the support vectors are those being misclassified.
+
+### Support Vector Classifier
+
+It's not the case that all the observation set can be divided by a hyperplane and the support vector classifier is the generalization of maximal margin classifier. We allow some oberservations on the "wrong side", and the magnitude is directly controlled by $\epsilon$ and is indirectly controlled by $C$, which can be arbitrarily chosen. Still, Support Vector Classifier depends on the hyperplane chosen, which is equivalent to maximize $M$ while subject to the condition: $\sum \beta_j^2=1$ and $y_i(\beta_0+\beta_1x_{i1}+\dots+\beta_px_{ip}) \geq M(1-\epsilon)$. Moreover, we require $\epsilon \geq 0$ and $\sum_{i=1}^n \leq C$. Here $\epsilon$ can be viewed as the errors the observation could be on the wrong side, while $C$ controls the magnitude of the error allowed.
+
+```{r}
+#create data
+set.seed(1)
+x<-matrix(rnorm(20*2),ncol=2)
+x
+y<-c(rep(-1,10),rep(1,10))
+y
+x[y==1,]<-x[y==1,]+1
+x
+#Here color is like a random variable. Color is different for different y value.
+plot(x,col=(3-y))
+#the observation is not linear separable
+```
+
+Now we fit support vector classifier
+```{r}
+dat<-data.frame(x=x,y=as.factor(y))
+library(e1071)
+#scale=F tells r do not standardize the observation
+#cost denotes the degree of error, large cost less error
+svmfit<-svm(y~., data=dat, kernel="linear",cost=10,scale=F)
+#When plotting SVC, data=dat argument is needed.
+plot(svmfit,dat)
+svmfit$index
+summary(svmfit)
+```
+
+```{r}
+#e1017 has built in function tune() to perform 10-fold cross-validation
+set.seed(1)
+tune.out<-tune(svm,y~.,data=dat,kernel="linear",ranges=list(cost=c(0.001,0.01,0.1,0.1,1,5,10,100)))
+summary(tune.out)
+#We see cost=0.1 has  the lowest cross-validation error rate
+#We can acess more information for the model with cost=0.1, which is the best model.
+bestmod<-tune.out$best.model
+summary(bestmod)
+```
+
+```{r}
+#predict() can also be used here
+#We imitate the original data here for the test data
+xtest<-matrix(rnorm(20*2),ncol=2)
+ytest<-sample(c(-1,1),20,rep=T)
+xtest[ytest==1,]<-xtest[ytest==1,]+1
+testdat<-data.frame(x=xtest,y=as.factor(ytest))
+#now we apply predict()
+ypred<-predict(bestmod,testdat)
+table(predict=ypred,truth=testdat$y)
+```
+
+We come back to the case where x,y are linear separable:
+```{r}
+x[y==1,]<-x[y==1,]+0.5
+plot(x,col=(y+5)/2,pch=19)
+#We fit maximal margin classifier simply by choosing very large cost
+dat<-data.frame(x=x,y=as.factor(y))
+svmfit<-svm(y~.,data=dat,kernel="linear",cost=1e5)
+summary(svmfit)
+plot(svmfit,dat)
+#Since only 3 support vectors are used, this might provide bad predictions. If we change cost=1
+svmfit<-svm(y~.,data=dat,kernel="linear",cost=1)
+summary(svmfit)
+plot(svmfit,dat)
+#Now we used totally 7 support vectors
+```
+
+# Support Vector Machine
+
+The need of generalizing maximal margin classifier to support vector classifier is due the condition when the data points cannot be separated by a hyperplane, but notice that the underlying decision boundary should be linear. However, what if the decision boundary is not linear? The generalization of support vector classifier for nonlinear boundary is called support vector machine.
+Basically, we are just adding new predictors to the original models. The solution to the enlarged feature space is still linear, but the solution to the original feature space is nonlinear. Let the newly added predictors be $Z_1,\dots,Z_q$, then the original optimization problem now becomes maximize $M$ while subject to the condition: $\sum \beta_j^2=1$ and $y_i(\beta_0+\beta_1x_{i1}+\dots+\beta_px_{ip}+\beta_{p+1}x_{i(p+1)}+\dots+ \beta_{p+q}x_{i(p+q)}) \geq M(1-\epsilon)$. Moreover, we require $\epsilon \geq 0$ and $\sum_{i=1}^n \leq C$.
+
+In the case of support vector classifier, the classifier can be represented as: $f(x)=\beta_0+\sum_{i \in S} \alpha_i<x,x_i>$, where $S$ is the set of all support vectors  and the inner product is the usual one in Euclidean space, which is $<x_i,x_{i'}>=\sum_{i=1}^p x_{ij}x_{i'j}$. The generalization of support vector classifier to support vector machine is in fact the generalization from the usual inner product to the "generalization" of inner product. 
+
+A big problem brought up by adding new predictors is additional difficulty of calculation. However, we can replace the usual inner product by a kernel function. For example, we replace $<x_i,x_{i'}>$ by $K(x_i,x_{i'})=(1+\sum_{j=1}^p x_{ij}x_{i'j})^d$, and this example is called polynomial kernel of degree d, while the usual inner product (we introduced before) is called the linear kernel. $f(x)=\beta_0+\sum_{i \in S} \alpha_iK(x,x_i)$ with polynomial kernel with degree d is in fact the support vector machine with polynomial decision boundary (the feature space involve higher order terms in the original feature space).
+
+Another frequently mentioned example is radial kernel: $K(x_i,x_{i'})=\exp(-\gamma\sum_{j=1}^p(x_{ij}-x_{i'j})^2)$.
+
+```{r}
+#create the data
+set.seed(1)
+x<-matrix(rnorm(200*2),ncol=2)
+x[1:100,]<-x[1:100,]+2
+x[101:150,]<-x[101:150,]-2
+y<-c(rep(1,150),rep(2,50))
+dat<-data.frame(x=x,y=as.factor(y)) #still two class
+#create training set
+train<-sample(200,100)
+svmfit<-svm(y~.,data=dat[train,],kernel="radial",gamma=1,cost=1)
+plot(svmfit,dat[train,])
+#use tune() to perform cross-validation
+set.seed(1)
+tune.out<-tune(svm,y~.,data=dat[train,],kernel="radial",ranges=list(cost=c(0.1,1,10,100,1000),gamma=c(0.5,1,2,3,4)))
+summary(tune.out)
+#The best choice is cost=1, gamma=0.5
+table(true=dat[-train,"y"],pred=predict(tune.out$best.model,newdata=dat[-train,]))
+```
+
+### ROC Curve
+ROC curve is a popular graphic for simultaneously displaying the two types of errors for all possible thresholds. ROC standas for Receiver Operationg Characteistics, which turns out to be another story. It's usually used to compare different fitting models, and the one hug closer to the top left corner is preferred. The following is an example:
+
+![Alt text](/Users/luyunsheng/Desktop/Winter Stat ML/ROC.png)
+The following code shows how to generate this:
+```{r}
+library(ROCR)
+#write our own function for plotting ROC curve
+rocplot<-function(pred,truth,...){
+  predob<-prediction(pred,truth)
+  #tpr=true positive rate, fpr=false positive rate
+  perf<-performance(predob,"tpr","fpr")
+  plot(perf,...)
+}
+svmfit.opt<-svm(y~.,data=dat[train,],kernel="radial",gamma=2,cost=1,decision.values=T)
+fitted<-attributes(predict(svmfit.opt,dat[train,],decision.values=TRUE))$decision.values
+par(mfrow=c(1,2))
+#We use -fitted because this brings us the shape we want. Because it's -fitted, now the negative value represents class 1 and positive value represents class 2.
+rocplot(-fitted,dat[train,"y"],main="Training Data")
+#By increasing gamma, we can produce more flexible fit
+svmfit.flex<-svm(y~.,data=dat[train,],kernel="radial",gamma=50,cost=1,decision.values=T)
+fitted<-attributes(predict(svmfit.flex,dat[train,],decision.values=T))$decision.values
+rocplot(-fitted,dat[train,"y"],add=T,col="red")
+#However, previous results only shows training data, and we are also interested in testing data.
+fitted<-attributes(predict(svmfit.opt,dat[-train,],decision.values=T))$decision.values
+rocplot(-fitted,dat[-train,"y"],main="Test Data")
+fitted<-attributes(predict(svmfit.flex,dat[-train,],decision.values=T))$decision.values
+rocplot(-fitted,dat[-train,"y"],add=T,col="red")
+```
+
+Now we see the code for multiple classes:
+```{r}
+set.seed(1)
+x<-rbind(x,matrix(rnorm(50*2),ncol=2))
+#previously entries of y=1 or y=2, so now there are three classes
+y<-c(y,rep(0,50))
+x[y==0,2]<-x[y==0,2]+2
+dat<-data.frame(x=x,y=as.factor(y))
+par(mfrow=c(1,1))
+plot(x,col=(y+1))
+svmfit<-svm(y~., data=dat,kernel="radial",cost=10,gamma=1)
+plot(svmfit,dat)
+```

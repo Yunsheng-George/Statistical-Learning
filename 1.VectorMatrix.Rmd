@@ -1,0 +1,92 @@
+---
+title: "Vector & Matrix"
+author: "Yunsheng Lu"
+date: "2022-12-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+1. c( ): Concatenate numbers to create vector
+2. x+y: sum of 2 vectors with the same length
+3. length( ): check the length of the vector
+```{r}
+x<-c(1,3,2,5)
+y<-c(2,3,4,6)
+x
+z<-x+y
+z
+length(x)
+```
+
+4. ls( ): list all the objects created so far
+5. rm( ): remove the object chosen
+(remove all the objects: rm(list=ls()) )
+```{r}
+ls()
+rm(x,y)
+ls()
+```
+
+6. rnorm( ): generate a verctor of random variables
+7. cor( ): correlation of 2 vectors (n >= 3)
+```{r}
+a=rnorm(5,10,100)
+b=a+rnorm(5,10,100) #second mean, third variance
+cor(a,b)
+```
+
+8. set.seed( ): reproduce a previously generated set of random series
+```{r}
+set.seed(1)
+rnorm(5)
+set.seed(2)
+rnorm(5)
+set.seed(1)
+rnorm(5)
+```
+--------------------------------------------------------------------------------
+
+9. matrix( ): create a matrix given the form, given the entries
+```{r}
+x<-matrix(data=c(1,2,3,4),nrow=2,ncol=2)
+x
+y<-matrix(c(1,2,3,4),2,2) #default: byrow=FALSE
+y
+z1<-matrix(c(1,2,3,4),2,2,byrow=TRUE) #byrow means list entries in the row order
+z1
+```
+
+10. sqrt( ): every entry of the vector/matrix taking the squared root
+```{r}
+sqrt(z)
+sqrt(z1)
+```
+
+11. extract entries
+```{r}
+A<-matrix(1:16,4,4)
+A
+A[2,3]
+A[c(1,3),c(2,4)] #c[1,3] refers to 1st and 3rd rows; c[2,4] refers to 2nd and 4th rows
+A[1:3,2:4] #1:3: from 1st to 3rd rows; 2:4: from 2nd to 4th rows
+A[1:3,] #default: full columns
+A[c(1:2),]
+A[1,]
+A[,1:3] #default: full rows
+```
+
+12. remove entries
+```{r}
+B<-A[-c(1,3),]
+B
+```
+
+13. dim( ): check the size of the matrix
+```{r}
+dim(A)
+```

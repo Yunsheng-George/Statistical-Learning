@@ -1,0 +1,279 @@
+---
+title: "Regularization Methods"
+author: "Yunsheng Lu"
+date: "2023-01-07"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+It sounds like with more predictors, the models should be better because we consider more. However, in fact, more predictors will have a negative effect on model accuracy and model intepretation, because noises are introduced along with predictors, and the variance could be large, together with overfitting issue, which means a too-much-good fitting will result in bad prediction capibility. Thus, we hope to reduce the problems introduced by a huge amount of predictors, and here we introduce three main methods. 
+
+# Subset Selection Methods
+The followings are the indices related to model selections.
+
+$C_p$ adds a penalty term $2d\hat{\sigma}^2$to the parameter $\frac{1}{n}RSS$, which measures the goodness of the fit of the model.$C_p$=$\frac{1}{n}(RSS+2d\hat{\sigma}^2)$. The penalty term is proportional to the estimated variance of our model. For linear regression, $\hat{\sigma}^2=\frac{RSS}{n-p-1}$. Thus when we increase the number of parameters, together we increase the penalty term.
+
+AIC is numerically the same to $C_p$ up to constant.
+
+BIC is derived from a Bayesian point of view, which ends up quite similar to AIC. BIC=$\frac{1}{n}(RSS+\log(n)d\hat{\sigma}^2)$. Here we can see that BIC adds more penalty when n is large (and it's always the case), so usually BIC would prefer smaller model than AIC.
+
+Recall that $R^2=1-\frac{RSS}{TSS}$. Here we adjust this index to the size of the model and define Adjusted $R^2=1-\frac{RSS(n-d-1)}{TSS(n-1)}$. We should see that unlike the previous indices, the smaller the Adjusted $R^2$ is, the worse the model is.
+
+### Best Subset selection
+This is the most brutal methods to select the significant predictors. If there are p predictors in total, then we simply try all 2^p possible subsets of the set of predictors to see which has the smallest asscoiated mean squared errors(MSE). The obvious disadvantage the computational difficulty.
+
+Here is a litte bit more information about function regsubset( ): "Since this function returns separate best models of all sizes up to nvmax and since different model selection criteria such as AIC, BIC, CIC, DIC, ... differ only in how models of different sizes are compared, the results do not depend on the choice of cost-complexity tradeoff." This reminds us that AIC, BIC, Cp are indices measuring models with different number of predictors. The reason is that typically, the goodness of fit for different models with the same number of predictor will always prefer the one with less RSS, because when p is fixed, all these indices only depend on RSS. ($\hat{\sigma}^2=\frac{RSS}{n-p-1}$)
+```{r}
+library(ISLR2)
+View(Hitters)
+names(Hitters)
+#na.omit( ) delete any row that misses values in any variable
+Hitters<-na.omit(Hitters)
+#regsubsets( ) performs the best subset selection approach and it's in leap library
+library(leaps)
+regfit.full<-regsubsets(Salary~.,Hitters)
+summary(regfit.full) #For 1 variable, the best contains CRBI, for two, the best contains Hits and CRBI
+#nvmax option can be used to get the model "up to" (which means can be less) the number of variables we want
+regfit.full<-regsubsets(Salary~.,Hitters,nvmax=19)
+reg.summary<-summary(regfit.full)
+names(reg.summary) #the information provided by the regsubsets method
+reg.summary$rss #We can see it's monotonically increasing
+par(mfrow=c(2,2))
+plot(reg.summary$rsq,xlab="number of vars",ylab="R^2",type="l")
+plot(reg.summary$adjr2,xlab="number of vars",ylab="Adjusted R^2",type="l")
+#which.max( ) identifies the largest point
+which.max(reg.summary$adjr2)
+#add points to the given positions
+points(11,reg.summary$adjr2[11],col="blue",cex=2,pch=20)
+plot(reg.summary$cp,xlab="number of vars",ylab="Cp",type="l")
+which.min(reg.summary$cp)
+points(10,reg.summary$cp[10],col="red",cex=1,pch=20)
+plot(reg.summary$bic,xlab="number of vars",ylab="BIC",type="l")
+which.min(reg.summary$bic)
+points(6,reg.summary$bic[6],col="green",cex=1,pch=20)
+#in fact regsubset( ) has built-in plot
+par(mfrow=c(1,1))
+plot(regfit.full,scale="r2")
+plot(regfit.full,scale="adjr2")
+plot(regfit.full,scale="Cp")
+plot(regfit.full,scale="bic")
+#Each level represents the best model given a particular number of predictors
+coef(regfit.full,6)
+coef(regfit.full,id=6)
+```
+
+### Forward and Backward (Stepwise) Selections
+This method has much less computation compared with Best Subset Selection. It only tries 1+p(p+1)/2 models. (remember the intercept is not a predictor). However, how to decide the best size of the subset? If we simply look at MSE or $R^2$, the fact is that we will always select the model with all the predictors. Here we can use AIC, BIC, $C_p$, Adjusted $R^2$ or using Cross-Validation. 
+```{r}
+#We continous to use regfit( ) function to do subset selections one step further
+regfit.fwd<-regsubsets(Salary~.,data=Hitters,nvmax=19,method="forward")
+summary(regfit.fwd)
+regfit.bwd<-regsubsets(Salary~.,data=Hitters,nvmax=19,method="backward")
+#Comparisons between fwd, bwd, and best subset selection
+coef(regfit.full,7)
+coef(regfit.fwd,7)
+coef(regfit.bwd,7)
+```
+
+
+### Cross-Validation Approach
+Finally we can also use cross-validation methods, because cross-validation naturally consider the predictability of the model, instead of just focusing on estimability. 
+
+```{r}
+#Our way of computing MSE for each model is more tedious than before because there's no built-in function of prediction and so in regsubset( ).
+set.seed(1)
+#create a random vectors with the length of the number of rows in Hitters, replace=True means repetition allows
+train<-sample(c(TRUE,FALSE),nrow(Hitters),replace=TRUE)
+test<-(!train)
+regfit.best<-regsubsets(Salary~.,data=Hitters[train,],nvmax=19) #get the best model according to the training data 
+
+test.mat<-model.matrix(Salary~.,data=Hitters[test,]) #create the design matrix for testingd data in Hitters
+val.errors<-rep(NA,19)
+for(i in 1:19){
+  coefi<-coef(regfit.best,id=i)
+  pred<-test.mat[,names(coefi)] %*% coefi #predicted value for each point in testing data
+  val.errors[i]<-mean((Hitters$Salary[test]-pred)^2) #mean squred error for model with i predictors
+}
+val.errors #a vector representing MSE (i-th entry for model with i predictors)
+which.min(val.errors)
+coef(regfit.best,7)
+#For convenience, we write our own version of prediction function, which is logically the same as the previous codes
+predict.regsubset<-function(object,newdata,id,..){ #ellipsis means the function is to take any number of named or unamed variables.
+  form<-as.formula(object$call[[2]]) #[[]] to extract an element in the list
+  mat<-model.matrix(form,newdata)
+  coefi<-coef(object,id=id)
+  xvars<-names(coefi)
+  mat[,xvars] %*% coefi
+}
+#We now begin the 10-fold cross-validation
+n<-nrow(Hitters)
+set.seed(1)
+folds<-sample(rep(1:10,length=n))
+cv.errors<-matrix(NA,10,19,dimnames=list(NULL,paste(1:19))) #paste( ) concatenate vectors after converting to characters
+for(j in 1:10){
+  best.fit<-regsubsets(Salary~.,data=Hitters[folds !=j,],nvmax=19) #the best fit in each of the 10 folds
+  for(i in 1:19){
+    pred<-predict.regsubset(best.fit,Hitters[folds==j,],id=i) #predicted value according to current best fit for each variable
+    cv.errors[j,i]<-mean((Hitters$Salary[folds==j]-pred)^2) #i,j-entry is the MSE of the best model with i predictors in jth fold
+  }
+}
+#the apply function will apply the function to the given object. Here Fun=mean, Margin=2, which means each column, which will result in the average MSE for models with each number of predictors
+mean.cv.errors<-apply(cv.errors,2,mean) 
+```
+
+# Shrinkage Methods
+Recall that $MSE(\hat{\theta})=E[(\hat{\theta}-\theta)^2]=Var(\hat{\theta}-\theta)+Bias^2(\hat{\theta})$. In order to reduce MSE of our prediction, it seems reasonable to reduce the variance parameter in the formula. It turns out that if we let the parameters $\beta_j$ be small, MSE could also be small. To achieve this, we introduce two shrinkage methods (we call it shrinkage methods because we shrink the parameters to be small)
+
+
+### Ridge Regression
+The problem related to Ridge Ression is to find the $\beta$ to achieve $\min (RSS+\lambda\sum \beta_j^2)$. The penalty term $\sum \beta_j^2$ is for the shrinkage. $\lambda$ here is the tuning parameter, which is controlling the proportion between shrinkage and model-fitting, and it can be selected by Cross-Validation approach. An equivalent expression is $\min_{\beta} RSS$ subject to $\sum_{i=1}^p \beta_j^2$.
+```{r}
+#We use glmnet( ) in glmnet library to perform Ridge Regression. Different from the usage of lm and glm, we do not simply write glmnet(Salary~.,data=Hitters). That's Wrong. Instead, we must pass the specific values into the function glmnet, which is illustrated as the following.
+library(glmnet)
+x<-model.matrix(Salary~.,Hitters)[,-1] #delete the first column, which is the intercept
+y<-Hitters$Salary
+grid<-10^seq(10,-2,length=100) #a vector whose entry is equal step between 10^10 and 10^-2
+#alpha=0 for ridge regression / alpha=1 for Lasso. Also, lambda supports the input as a vector
+ridge.mod<-glmnet(x,y,alpha=0,lambda=grid)
+plot(ridge.mod)
+dim(coef(ridge.mod)) #row=20 for 20 predictors /  column=100 for each of 100 lambda values
+ridge.mod$lambda[20]
+coef(ridge.mod)[,20] #Notice that the output is always corresponding to the decreasing order in lambda. So small column corresponds to large lambda, and the estimated coefficients should be very small.
+sqrt(sum(coef(ridge.mod)[-1,50]^2)) # L2 norm of beta (not including the intercept)
+#predict( ) can also be applied to the case of ridge regression, s=50 means lambda=50.
+predict(ridge.mod,s=50,type="coefficients")[1:20,]
+```
+Here is the usage conclusion for predict( )
+
+1.predict(lm.fit)
+This is the default use, which provides the fitted value for each point in the observation dataset.
+
+2.predict(lm.fit,data.frame(lstat=c(5,10,14)),interval="confidence")
+The context here is that we did a simple regression on a predictor called "lstat." This method gives 95% confidence interval for y value with lstat=5,10,14
+
+3.predict(lm.fit,data.frame(lstat=c(5,10,15)),interval="prediction")
+Similar as 2., but gives prediction value
+
+4.predict(glm.fits,type="response")
+This gives the y-value(response) for logistic regression
+
+5.predict(ridge.mod,s=50,type="coefficients")
+This gives estimated beta for each of 100 lambda between 10^-2 to 10^10
+
+```{r}
+#Split the training and testing datasets
+set.seed(1)
+train<-sample(1:nrow(x),nrow(x)/2) #select nrows(x)/2 points from nrow(x) datas in total
+test<-(-train) #each entry takes the additive inverse of the corresponding entry in train
+y.test<-y[test]
+```
+
+Here are two ways of splitting the data:
+
+1. train<-sample(1:nrow(Hitters),nrow(Hitters)/2) / test<-(-train)
+
+2. train<-sample(c(TRUE,FALSE),nrow(Hitters),replace=TRUE)
+
+```{r}
+ridge.mod<-glmnet(x[train,],y[train],alpha=0,lambda=grid,thresh=1e-12)
+#Note that if we don't specify s, then predict( ) will give each value in fit$lambda
+ridge.pred<-predict(ridge.mod,newx=x[test,])
+summary(ridge.pred)
+#We evaluate the MSE for lambda=4, if we want lambda=10^10, we should have s=1e10
+ridge.pred<-predict(ridge.mod,s=4,newx=x[test,])
+mean((ridge.pred-y.test)^2)
+#If we calculate the MSE of a model simply with the intercept term, we can do the following:
+mean((mean(y[train])-y.test)^2)
+#We now show that ridge regression with lambda=0 is the least-square linear regression
+ridge.pred<-predict(ridge.mod,s=0,newx=x[test,],exact=T,x=x[train,],y=y[train])
+#If s is already in fit$lambda(grid), then exact=F/T has no use. If s is not in grid, then if exact=F, the predicted value would be the linear intepolation. If exact=T, then predicted value corresponds the x in grid closest to the s we chose.
+mean((ridge.pred-y[test])^2)
+lm.fit<-lm(y[train]~x[train,])
+coef(lm.fit)
+lm.pred<-as.matrix(cbind(rep(1,nrow(x[test,])),x[test,])) %*% coef(lm.fit)
+mean((lm.pred-y[test])^2)
+```
+
+The tuning paramter $\lambda$ can be selected by built-in cross-validation
+```{r}
+#By default, cv.glmnet( ) will perform 10-fold cross-validation
+set.seed(1)
+cv.out<-cv.glmnet(x[train,],y[train],alpha=0)
+plot(cv.out)
+bestlam<-cv.out$lambda.min
+bestlam
+ridge.pred<-predict(ridge.mod,s=bestlam,newx=x[test,])
+mean((ridge.pred-y.test)^2)
+#Now we examine the coeffcients corresponding to best lambda
+out<-glmnet(x,y,alpha=0)
+predict(out,type="coefficients",s=bestlam)
+```
+
+### Lasso
+The problem related to Ridge Ression is to find the $\beta$ to achieve $\min (RSS+\lambda\sum |\beta_j|)$. The penalty term $\sum \beta_j^2$ is for the shrinkage. $\lambda$ here is the tuning parameter, which is controlling the proportion between shrinkage and model-fitting, and it can be selected by Cross-Validation approach. An equivalent expression is $\min_{\beta} RSS$ subject to $\sum_{i=1}^p |\beta_j|$.
+```{r}
+lasso.mod<-glmnet(x[train,],y[train],alpha=1,lambda=grid)
+plot(lasso.mod)
+set.seed(1)
+cv.out<-cv.glmnet(x[train,],y[train],alpha=1)
+plot(cv.out)
+bestlam<-cv.out$lambda.min
+bestlam #smaller than the one for ridge regression
+lasso.pred<-predict(lasso.mod,s=bestlam,newx=x[test, ])
+mean((lasso.pred-y.test)^2)
+out<-glmnet(x,y,alpha=1)
+predict(out,type="coefficients",s=bestlam) # . represents the estimated value to be zero
+```
+
+
+Comparing with Ridge Regression, Lasso shrinks the parameters more aggressively to zero, because the smallest points are always achieved on the corner of the squre, represented by $\sum_{i=1}^p |\beta_j|$, so sometimes it could be used for subset selection.
+
+# Dimension Reduction Methods
+Dimension here refers to the number of predictors. Sometimes we can reduce the number of predictors by transforming to the linear combinations of them. It can be applied to process high-dimensional dataset, but it's worth mentioning that all the previous approaches introduced can also achieve similar purposes. Be more specific, Let the linear model be: $y=\beta_0+\beta_1X_1 + \dots \beta_nX_n$. We let $Z_1, \dots Z_m$ be the transformed predictors, which are in fact the linear combinations of $X_1, \dots, X_n$, i.e, $Z_m=\sum_{i=1}^p\phi_{jm}X_j$. So now, the model becomes $Y=\theta_0+\theta_1Z_1+\dots\theta_mZ_m$, and each $y_i=\theta_0+\sum_{m=1}^M\theta_mz_{im}+\epsilon_i$. Simply by computation, we can see that $\beta_j=\sum_{m=1}^M\theta_m\phi_{jm}$.
+
+### Principal Components Analysis
+There are two steps in principal components analysis: first, choose the principal componets; second regress on principal components, whcih is called Pricipal Components Regression(PCR). The first principal component is the direction in the space where the data has the most variability, and the second principal component is the direction in the space where the data has the second most variability and is uncorrelated to the first component. The uncorrelated component turns out to be the direction orthogonal to the first principal components, so on and so forth. Each step involves the standardization of the parameters, so it's reasonable to connect this method to Gram–Schmidt process.
+
+Take the example recorded in the book ISLR2, we display the data (pop,ad) on the graph.
+![Alt text](/Users/luyunsheng/Desktop/Winter Stat ML/popVSad.png)
+Here the first principal component is $Z_1=0.839(pop-\overline{pop})+0.544(ad-\overline{ad})$, which is, by definition, the direction which the data varies the most. Also, we should notice that 0.839^2+0.544^2=1, so more than being the linear combination, it's in fact the convex combination. We then by definition find the second principal component, which is $Z_2=0.544(pop-\overline{pop})-0.839(ad-\overline{ad})$. In this case, we can see the first principal component alone can almost explains y.
+![Alt text](/Users/luyunsheng/Desktop/Winter Stat ML/1VS2.png)
+Demonstrated by the graph, the PCR here simply regresses on the single variable $Z_1$. Of course, in other cases, we can simply use Cross-Validation Approach.
+
+```{r}
+#We use pls function in pls library
+library(pls)
+set.seed(2)
+pcr.fit<-pcr(Salary~.,data=Hitters,scale=TRUE,validation="CV") #scale=TRUE indicates the variable is normalized
+summary(pcr.fit)
+#There are two blocks in the report. The first block records the MSE for each model with different number of components. However, pcr demonstrates the squared MSE instead of MSE itself. Thus, for example when n=4, MSE4=352.9^2=124468. The second block shows the percentage of the data that can be explained by the model. The second block is brought by validation="CV"
+#plot cross-validation. val.type="MSEP" indicates that MSE will be plotted
+validationplot(pcr.fit,val.type="MSEP")
+#We now show the parameters related to ncomp=5
+pcr.pred<-predict(pcr.fit,x[test,],ncomp=5)
+mean((pcr.pred-y.test)^2)
+pcr.fit<-pcr(y~x,scale=TRUE,ncomp=5)
+summary(pcr.fit)
+```
+
+### Partial Least Squares
+The major drawback of PLR is that it's unsupervised, which means we didn't really use the response value y when selecting the principal components (recall that we simply did it according to the natural spread of the data). In contrast, PLS is supervised, and the component found by PLR help explain both the predictors and the response.
+
+To find the coefficient for $Z_1=\sum_{j=1}^p \phi_{j1}X_j$, we regress $Y$ on each $X_j$, and the slope is used for $\phi_{j1}$, we can show that this $\phi_{j1}$ is proportional to the correlation between $Y$ and $X_j$. For $Z_2$, we regress each $X_j$ on $Z_1$, and the residual represents the data unexplained by (orthogonal to) $Z_1$.  We then regress the residual $\epsilon_j$ again on $X_j$ to get the coefficient of the linear combination of $Z_2$, so on and so forth.
+
+```{r}
+set.seed(1)
+pls.fit<-plsr(Salary~.,data=Hitters,subset=train,scale=TRUE,validation="CV")
+summary(pls.fit)
+validationplot(pls.fit,val.type="MSEP")
+pls.pred<-predict(pls.fit,x[test,],ncomp=1)
+mean((pls.pred-y.test)^2)
+#use full dataset
+pls.fit<-plsr(Salary~.,data=Hitters,scale=TRUE,ncomp=1)
+summary(pls.fit)
+```
+

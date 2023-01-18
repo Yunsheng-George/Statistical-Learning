@@ -1,0 +1,109 @@
+---
+title: "Multiple Linear Regression"
+author: "Yunsheng Lu"
+date: "2022-12-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Data Loading
+```{r}
+library(MASS)
+library(ISLR2)
+head(Boston) #Boston is contained in ISLR2
+```
+
+Simple Linear Regression
+```{r}
+lm.fit<-lm(medv~lstat, data=Boston)
+attach(Boston)
+lm.fit
+summary(lm.fit) #for more detailed information
+names(lm.fit) #find information besides summary(lm.fit)
+coefficients #find the values of the parameterss in lm.fit
+```
+
+Confidence Interval and Prediction Interval
+```{r}
+confint(lm.fit) #find confidence interval for each parameters
+#find confidence or prediction interval for the y-value
+predict(lm.fit,data.frame(lstat=c(5,10,14)),interval="confidence")
+predict(lm.fit,data.frame(lstat=c(5,10,15)),interval="prediction")
+```
+
+Plots related to Regression
+```{r}
+plot(lstat,medv) #abline always adds a line to the previous plot
+abline(lm.fit) #abline can be used to draw any straight lines
+abline(lm.fit,lwd=3,col="red") #lwd=3 givens the width of the line
+plot(lstat,medv,pch=20) #pch gives different features to the point
+plot(lstat,medv,pch="+")
+plot(1:20,1:20,pch=1:20)
+par(mfrow=c(2,2)) #divide the region of the plot into 2*2 grid of panels
+plot(lm.fit) #naturally there are 4 plots related to the command "plot(lm.fit)"
+par(mfrow=c(1,1))
+predict(lm.fit) #This gives the fitted value for each point in the dataset
+plot(predict(lm.fit),residuals(lm.fit))
+plot(predict(lm.fit),rstudent(lm.fit)) #ri=ei/((1-hii)MSE)^(1/2)
+#hatvalue() find 
+plot(hatvalues(lm.fit))
+which.max(hatvalues(lm.fit)) #We can use identify also, but not directly apply to plot(lm.fit), because there are 4 plots associated.
+```
+
+Multiple Linear Regression
+```{r}
+lm.fit<-lm(medv~lstat+age,data=Boston)
+summary(lm.fit)
+lm.fit<-lm(medv~.,data=Boston) #fit all parameters
+summary(lm.fit)
+library(car) #install.packages("car") for vif( )
+vif(lm.fit) #vif==1/(1-Rj|-j) to check multicollinearity. High VIF means there are strong multicollinearity between the variables and should be deleted (vif<5 is good and <10 is acceptable)
+#age and indus has high p-values and should be deleted
+lm.fit<-lm(medv~.-age,data=Boston)
+lm.fit<-update(lm.fit,~.-indus)
+summary(lm.fit)
+summary(lm(medv~lstat*zn)) #check interaction terms
+```
+
+Non-linear Transformation of Predictors
+```{r}
+#introduce new predictors (ex:lstat^2)
+lm.fit2<-lm(medv~lstat+I(lstat^2)) 
+summary(lm.fit2)
+#higher order polynomial regression (ex: order 5)
+lm.fit5<-lm(medv~poly(lstat,5))
+summary(lm.fit5)
+#According to summary, all 5 orders look good
+#log transformation of the parameter
+summary(lm(medv~log(rm),data=Boston))
+```
+
+Compara 2 models (ANOVA)
+```{r}
+lm.fit<-lm(medv~lstat)
+anova(lm.fit,lm.fit2)
+#According to ANOVA, with term lstat^2, the model is far better
+```
+
+Qualitive Predictors
+```{r}
+head(Carseats)
+#We can see that ShelveLoc is a qualitive variable
+attach(Carseats)
+contrasts(ShelveLoc)# R creates var ShelveLocGood=1 if good | =0 othereize. Similarly there is a ShelveLocMedium.
+```
+
+Write our own function (ex: read library(ISLR2) and library(MASS))
+```{r}
+LoadLibraries<-function(){
+  library(ISLR2)
+  library(MASS)
+  print("The libraries are loaded.")
+}
+LoadLibraries()
+```

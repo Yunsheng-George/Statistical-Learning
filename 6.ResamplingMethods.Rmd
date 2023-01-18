@@ -1,0 +1,106 @@
+---
+title: "Resampling Methods"
+author: "Yunsheng Lu"
+date: "2023-01-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Cross-Validation
+Cross-Validation(交叉验证)是一种利用数据集本身来衡量对模型对数据集本身预测准确性的一种方法。
+
+### Validation Approach 
+Validation Approach粗暴地将数据分成testing set和training set两部分。而后利用对training set来估计testing set来估计error rate。是的，这是最简单粗暴的方法。优点是计算量较小，缺点是error rate估计偏高，并且估计的波动较大。
+```{r}
+library(ISLR2)
+head(Auto)
+attach(Auto)
+#use sample( ) to select a training and a testing dataset
+set.seed(1)
+train<-sample(392,196) #randomly select 196 points out of 392
+lm.fit<-lm(mpg~horsepower,subset=train)
+lm.fit2<-lm(mpg~poly(horsepower,2),subset=train)
+lm.fit3<-lm(mpg~poly(horsepower,3),subset=train)
+#calculate mean sum of errors for each fitting on testing data
+mean((mpg-predict(lm.fit, Auto))[-train]^2)
+mean((mpg-predict(lm.fit2, Auto))[-train]^2)
+mean((mpg-predict(lm.fit3, Auto))[-train]^2)
+```
+
+### Leave-one-out Cross-Validation
+假设一个数据集有n个点。Leave-one-out Approach(LOOCV)是将这n个数据点以此看作n个单个点数据集看作testing dataset(每次利用剩下的n-1个数据点训练模型)。因此利用公式得到$CV_{(n)}=\frac{1}{n}\sum_{i=1}^n MSE_i$,其中$MSE_{i}=(y_i-\hat{y}_{i})^2$,而$\hat{y}_i$是通过不包括$y_i$的training set训练得到的对$y_i$的估计。
+若fitting model选取的是least-square linear regression或polynomial regression, 那么可以根据以下公式计算:$CV_{(n)}=\frac{1}{n}\sum_{i=1}^n(\frac{y_i-\hat{y}_i}{1-h_i})^2$。这个方法的优点是bias将会非常小。但是有两个缺点：首先计算量十分大；其次variance可能会很高。
+```{r}
+#cv.glm( ) is in boot library
+library(boot)
+glm.fit<-glm(mpg~horsepower)
+#use cv.glm( ) to get cv results. It produces several components.
+cv.err<-cv.glm(Auto,glm.fit)
+#delta vector contains the cross-validation result (the error rate) The first component is the raw cross-validation estimate of prediction error. The second component is the adjusted estimate, adjusted to the bias introduced by not using LOOCV.
+cv.err$delta 
+#Another example
+cv.error<-rep(0,10)
+for(i in 1:10){
+  glm.fit<-glm(mpg~poly(horsepower,i))
+  cv.error[i]<-cv.glm(Auto,glm.fit)$delta[1]
+}
+cv.error
+```
+
+### K-fold Cross-Validation
+K-fold交叉验证可谓是结合前两者的优点于一身。我们将原本的dataset分成k个subsets。每次利用k-1个datasets进行训练，并用剩下的一个进行测试，每次得到的Mean Squared Errors取平均，即：$CV_{(k)}=\frac{1}{k}\sum_{i=1}^kMSE_i$.
+```{r}
+#cv.glm( ) is in boot library
+library(boot)
+cv.error.10<-rep(0,10)
+for(i in 1:10){
+  glm.fit<-glm(mpg~poly(horsepower,i))
+  cv.error.10[i]<-cv.glm(Auto,glm.fit,K=10)$delta[1]
+}
+cv.error.10
+```
+
+
+# Bootstrap
+Bootstrap(自举法)是一种利用数据集本身来衡量对数据集本身的参数估计的波动性的方法。若数据集包含n个数据点，那么每次随机选取n个可重复的数据点组成B个数据集$Z^{*r}$,并利用$Z^{*r}$估计参数$\hat{\alpha}$,记作$\alpha^{*r}$.其中$\hat{\alpha}^{*r}$可由$Z^{*r}$内部的自举法得到。我们利用此公式来计算标准误差：$SE_B(\hat{\alpha})=\sqrt{\frac{1}{B-1}\sum_{i=1}^B(\hat{\alpha}^{*i}-\frac{1}{B}\sum_{j=1}^B\hat{\alpha}^{*j})^2}$
+
+
+![Alt text](/Users/luyunsheng/Desktop/Winter Stat ML/Bootstrap.png)
+
+### Example 1--Estimating the accuracy of a statistic of interests
+The parameter that we want to estimate refers to ISLR section 5.2., the following function calculate the parameter a by the formula:
+```{r}
+alpha.fn<-function(data,index){
+  X<-data$X[index]
+  Y<-data$Y[index]
+  (var(Y)-cov(X,Y)) / (var(X)+var(Y)-2*cov(X,Y))
+}
+head(Portfolio)
+alpha.fn(Portfolio,1:100)
+#We use boot( ) to perform a bootstrap analysis
+boot(Portfolio,alpha.fn,R=1000) # number of Z^i is 1000 in total
+```
+
+### Example 2--Estimating the accuracy of a statistics of interests
+We fit mpg using horsepower and we introduce two methods
+```{r}
+#Method 1
+#boot.fn用于“帮助”我们对给定bootstrap dataset进行估计
+boot.fn<-function(data,index){
+  coef(lm(mpg~horsepower,data=data,subset=index))
+}
+boot.fn(Auto,1:392)
+set.seed(1) #We need seed because boot create random datasets
+boot.fn(Auto,sample(392,392,replace = TRUE)) #replace=true means repetition is allowed，因此我们创建了一个基于原本dataset但是points可重复的新的dataset
+#Method 2, which will include the standard errors of 1000 bootstrap estimates of the intercept and slope
+boot(Auto,boot.fn,1000) #Bootstrap with R=1000
+```
+
+Note that lm( ) 当中似乎有直接对于估计的参数的standard error的记录
+```{r}
+summary(lm(mpg~horsepower,data=Auto))$coef
+```
+但是为什么上面得到的结果与我们bootstrap的结果不用呢？其实，我们在使用lm( )时假设error term是normally distributed，这可不一定对哦
+

@@ -1,0 +1,179 @@
+---
+title: "Classification"
+author: "Yunsheng Lu"
+date: "2023-01-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+Data Loading
+```{r}
+library(ISLR2)
+names(Smarket)
+dim(Smarket)
+Smarket
+summary(Smarket)
+cor(Smarket[,-9]) #cor() gives the correlation matrix for variables between each variables. Delete 9th variable because it's categorical.
+attach(Smarket)
+plot(Volume) #plot volume against index
+```
+
+Logistic Regression
+```{r}
+#glm can be used to fit many logistic regression
+#family=binomial denotes the type of response value
+glm.fits<-glm(Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume,data=Smarket,family=binomial)
+summary(glm.fits)
+#coef() is used to access the estimated parameters (each beta) of the model
+coef(glm.fits)
+summary(glm.fits)$coef #extract "coefficient part" from the summary of glm.fits
+#predict() can be used to predict the response of the model (previously used for predicting conf int)
+glm.probs<-predict(glm.fits,type="response") #note that the value is continuous (subject to generalized linear model)
+glm.probs[1:10]
+contrasts(Direction) # convert a logical vector into a two-level factor-var (column is var-name)
+#rep() produces a vector with repetitive numerical/textual value
+glm.pred<-rep("Down",1250)
+glm.pred[glm.probs>.5]="Up" #final results of the prediction (change down to up if prob>0.5)
+#table() can be used to create the confusion matrix for the prediction
+table(glm.pred,Direction)
+mean(glm.pred==Direction) #check precision
+#mean=0.5216,looks good, but this is training error rate, which should be much better than the testing error rate. The following part split the data into training and testing, two parts.
+#training dataset
+train<-(Year<2005) #a boolean vector consisting of data points in Smarket decided by whether the Year < 2005
+#testing dataset
+Smarket.2005<-Smarket[!train,] #pick a submatrix not including the data point in train (data in 2005)
+Direction.2005<-Direction[!train]
+#use training dataset to train the model
+glm.fits<-glm(Direction~Lag1+Lag2+Lag3+Lag4+Lag5+Volume,data=Smarket,family=binomial,subset=train)
+#numerical result using training dataset
+glm.probs<-predict(glm.fits,Smarket.2005,type="response")
+#two-level categorical prediction result
+glm.pred<-rep("Down",252)
+glm.pred[glm.probs>.5]="Up"
+mean(glm.pred==Direction.2005)
+#Lag1 and Lag2 are in fact the most significant parameters
+glm.fits<-glm(Direction~Lag1+Lag2,data=Smarket,family=binomial,subset=train)
+#use "newdata" to get the prediction with certain value of the parameters
+#data.frame() combine two vectors together into a data matrix
+predict(glm.fits,newdata=data.frame(Lag1=c(1.2,1.5),Lag2=c(1.1,-0.8)),type="response")
+```
+
+Linear Discriminant Analysis
+```{r}
+#lda() uses LDA to predict, which is in MASS library
+library(MASS)
+lda.fit<-lda(Direction~Lag1+Lag2,subset=train)
+lda.fit
+lda.pred<-predict(lda.fit,Smarket.2005)
+lda.pred
+#class contains prediction(up or down) of each observation point
+#posterior is the matrix of posterior prob. (i,j)=P(K=j|X=x)
+lda.class<-lda.pred$class
+table(lda.class,Direction.2005)
+mean(lda.class==Direction.2005) #this is easier than logistic regression
+#sum(TRUE,FALSE,TRUE)=2
+sum(lda.pred$posterior[,1]>0.5) #number of elements having posterior probability (P(K=Down|X=x))>0.5
+```
+
+Quadratic Discriminant Analysis
+```{r}
+qda.fit<-qda(Direction~Lag1+Lag2,subset=train)
+qda.fit
+qda.class<-predict(qda.fit,Smarket.2005)$class #because we will derive posterior matrix, the whole dataset is needed
+table(qda.class,Direction.2005)
+mean(qda.class==Direction.2005)
+```
+
+Naive Bayes
+```{r}
+#naive Bayes is in library(e1071),laplace=laplace controls Laplace smoothing (smooth the histogram data)
+library(e1071)
+nb.fit<-naiveBayes(Direction~Lag1+Lag2,data=Smarket,subset=train) #data=Smarket cannot be ignored
+nb.fit #it directly contains results of the classification
+#mean and standard deviation for Lag1 for direction = Down
+#Lag1 for each point in training dataset
+Lag1[train]
+#Direction for each point in training dataset
+Direction[train]
+#!!!!WRONG expression!!!!
+Lag1[Direction[train]]
+Lag1[Direction[train]=="Down"]
+Lag1[Year==2005][Direction=="Down"]
+#!!!!CORRECT expression!!!!
+Lag1[train][Direction[train]=="Down"]
+Lag1[Year==2005][Direction[Year==2005]=="Down"]
+mean(Lag1[train][Direction[train]=="Down"])
+sd(Lag1[train][Direction[train]=="Down"])
+nb.class<-predict(nb.fit,Smarket.2005)
+table(nb.class,Direction.2005)
+mean(nb.class==Direction.2005)
+#use predict() to get the predicted probability each observation point falling into
+nb.pred<-predict(nb.fit,Smarket.2005,type="raw")
+nb.pred[1:5]
+```
+
+注意到在logistic/poisson regression中，predicted classification是需要自己算的。
+LDA/QDA直接在lda( )/qda( )中提供了，而NaiveBayes需要用predict( )得到。而在接下来的KNN当中，knn( )仅提供predicted classes的信息.
+
+K-Nearest Neighbors
+```{r}
+#In order to use knn( ) in class library, we need 4 inputs.
+library(class)
+#We use cbind( ) (combine columns) to create matrices as we want 
+#A matrix containing training data associated with predictors
+train.X<-cbind(Lag1,Lag2)[train,]
+#A matrix containing testing data associated with predictors
+test.X<-cbind(Lag1,Lag2)[!train,]
+#A vector containing class labels for each observation in training dataset
+train.Direction<-Direction[train]
+#we set a seed because it's possible for R to remove the tie between a point and their nearest points
+set.seed(1)
+knn.pred<-knn(train.X,test.X,train.Direction,k=1) #notice that knn( ) directly derive the prediction
+table(knn.pred,Direction.2005)
+mean(knn.pred==Direction.2005)
+#We can change K by setting, for example, k=3 in knn( )
+#Now consider multiple parameters. Notice that different parameters could have very different range and variance in nature. For example, salaries 0-10000, age 20-50, which are quite different and it doesn't make sense if we directly calculate the distance according to their numerical values. Thus we need to "standardize" the data, by converting them all the standard form (with mean=0, sd=1)
+library(ISLR2)
+dim(Caravan)
+names(Caravan)
+attach(Caravan)
+summary(Purchase)
+#scale( ) to standardize the parameters
+standardized.X<-scale(Caravan[,-86])
+var(standardized.X[,1])
+var(standardized.X[,2])
+#Let the first 1000 observations be the testing dataset, and the rest be the training dataset
+test<-1:1000
+test.X<-standardized.X[test,]
+train.X<-standardized.X[-test,]
+test.Y<-Purchase[test]
+train.Y<-Purchase[-test]
+set.seed(1)
+knn.pred<-knn(train.X,test.X,train.Y,k=1)
+mean(test.Y==knn.pred)
+mean(train=="Yes") #the previous 0.88 may look nice, but there are in fact 94% not buying the car, which means if I say "Yes" for every buyer, I have 0.94 accuracy. Moreover, the accuracy only deceases when we let k=3 or 5, but still, it would be better than logistic regression. So the nature of the dataset does matter.
+```
+注意上面block中使用到的cbind( )与data.frame( )是非常接近到，都是把不同的列结合到一起。不同点在于data.frame( )包含变量的名字，而cbind( )不包含。所以data.frame( )本质是data，而cbind( )本质是matrix
+
+Poisson Regression
+```{r}
+attach(Bikeshare)
+dim(Bikeshare)
+names(Bikeshare)
+contrasts(Bikeshare$hr)=contr.sum(24)
+contrasts(Bikeshare$mnth)=contr.sum(12)
+mod.pois<-glm(bikers~mnth+hr+workingday+temp+weathersit,data=Bikeshare,family=poisson)
+summary(mod.pois)
+coef.mnth<-c(coef(mod.pois)[2:12],-sum(coef(mod.pois)[2:12])) #coefficients for each months (Dec. needs to be explicitly computed )
+plot(coef.mnth,xlab="Month",ylab="Coefficient",xaxt="n",col="blue",pch=19,type="o")
+axis(side=1,at=1:12,labels=c("J","F","M","A","K","J","J","A","S","O","N","D"))
+coef.hours<-c(coef(mod.pois)[13:35],-sum(coef(mod.pois)[13:35]))
+plot(coef.hours,xlab="Hours",ylab="Coefficient",col="blue",pch=19,type="o") #type o 是折线图
+```
+
+

@@ -1,0 +1,290 @@
+---
+title: "NonLinearModel"
+author: "Yunsheng Lu"
+date: "2023-01-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ISLR2)
+attach(Wage)
+```
+
+# Basis Function
+
+Most of the non-linear regression can be viewed as the fitting based on the basis functions: $y_i=\beta_0+\beta_1f_1(x_i)+\dots+\beta_nf_n(x_i)$
+
+### Example 1: Polynomial Regression
+$y_i=\beta_0+\beta_1x_i+\dots+\beta_d(x_i)^d$
+```{r}
+fit1<-lm(wage~poly(age,4))
+coef(summary(fit1))
+```
+
+Notice that the in poly(), the default value is raw=FALSE, which means r will return orthogonal polynomial, which means the each columns of the matrices are simply a linear combination of $age,age^2,\dots$.
+
+```{r}
+fit2<-lm(wage~poly(age,4,raw=TRUE))
+coef(summary(fit2))
+```
+
+Notice that although the estimated coefficients between fit1 and fit2 are very different, the fitted values for two models are closed. 
+
+```{r}
+#fitted values
+agelim<-range(age) # create a 2-dimensional vector of (age.min,age.max)
+age.grid<-seq(from=agelim[1],to=agelim[2])
+age.grid
+list(age=age.grid)
+#fit for raw=F
+preds<-predict(fit1,newdata=list(age=age.grid),se=TRUE) #se=TRUE means we want standard errors as well
+#fit for raw=T
+preds2<-predict(fit2,newdata=list(age=age.grid),se=TRUE)
+max(abs(preds$fit-preds2$fit))
+se.bands<-cbind(preds$fit-2*preds$se.fit,preds$fit+2*preds$se.fit)
+se.bands[1:10]
+```
+
+
+Recall that standard error of the estimates under simple linear regression is: $se_{y_j}=\hat{\sigma}\sqrt{\frac{1}{n}+\frac{(x_j-\bar{x_j})^2}{\sum(x_i-\bar{x_i})^2}}$
+
+```{r}
+#Two equivalent ways of performing polynomial regression
+fit2a<-lm(wage~age+I(age^2)+I(age^3)+I(age^4))
+coef(summary(fit2a))
+fit2b<-lm(wage~cbind(age,age^2,age^3,age^4))
+coef(summary(fit2b))
+```
+
+```{r}
+#plot the results
+#mar and oma control the margin of the graph;
+par(mfrow=c(1,2),mar=c(4.5,4.5,1,1),oma=c(0,0,4,0))
+#cex denotes the size of the data points comparing to the whole graph
+plot(age,wage,xlim=agelim,cex=0.5,col="darkgrey")
+#title() creates a title for the whole plot
+title("Degree-4 polynomial", outer=T)
+lines(age.grid,preds$fit,lwd=2,col="blue")
+#matlines( ) plot the column of the matrix, here we plot se.bands, which consist of two lines (upper and lower bounds)
+#lty denotes the line type
+matlines(age.grid,se.bands,lwd=1,col="blue",lty=3)
+```
+
+
+We now perform the logistic polynomial regression. The model is simply the combination of logistic regression and polynomial regression. Here $\log(\frac{P(Y=1|X)}{1-P(Y=1|X)})=X\beta$, or equivalently,$P(Y=1|X)=\frac{\exp{X\beta}}{1+\exp{X\beta}}$ where $X=(1,x,x^2,\dots)$.
+
+```{r}
+fit<-glm(I(wage>250)~poly(age,4),family=binomial)
+preds<-predict(fit,newdata=list(age=age.grid),se=TRUE)
+preds$fit
+pfit<-exp(preds$fit)/(1+exp(preds$fit)) #value of the P(Y|X)
+pfit
+se.bands.logit<-cbind(preds$fit+2*preds$se.fit,preds$fit-2*preds$se.fit)
+se.bands<-exp(se.bands.logit)/(1+exp(se.bands.logit))
+se.bands
+#IMPORTANT: We could have directly compute the predicted value simply using predict( ), which equals to pfit
+preds<-predict(fit,newdata=list(age=age.grid),type="response",se=T)
+preds
+plot(age,I(wage>250),xlim=agelim,type="n",ylim=c(0,0.2))
+#jitter( ) let each point to be "wider" a little bit
+points(jitter(age),I((wage>250)/5),cex=0.5,pch="l",col="darkgrey")
+lines(age.grid,pfit,lwd=2,col="blue")
+matlines(age.grid,se.bands,lwd=1,col="blue",lty=3)
+```
+
+### Example 2: Step Function
+Let $C_0(X)=I(X<c_1),\dots,C_{i}(X)=I(c_i<X<c_{i+1}),\dots C_k=I(X<c_k)$
+$y_i=\beta_0+\beta_1C_1(x_i)+\dots+\beta_KC_n(X_K)$
+```{r}
+#We use cut( ) function to cut the whole intervals into pieces
+cut(age,4)[1:10] #If we express in this way, we can view which interval each point fall intp
+table(cut(age,4)) #If we express in this way, we can see which intervals are cut into
+fit<-lm(wage~cut(age,4))
+coef(summary(fit))
+preds<-predict(fit,newdata=list(age=age.grid))
+par(mfrow=c(1,2),mar=c(4.5,4.5,1,1),oma=c(0,0,4,0))
+plot(age,wage,xlim=agelim,cex=0.5,col="darkgrey")
+title("Step Function", outer=T)
+lines(age.grid,preds,lwd=2,col="blue")
+```
+
+
+Here is a detailed explanation of vector, list and table.
+
+1.vector: vector is in fact "atomatic vector for short." It's a list consisting only of numerical values or characters, or logic, etc.
+
+2.list: list can be viewed as the flexible vector. It can contain numbers, characters, and vectors. Every vector is a list, but the converse is not true.
+
+3.table: table is a tabulation helping us to view the level and the frequency of each level appeared in a categorical variable.
+
+# Regression Spline
+
+### Piecewise Polynomial Regression
+The motivation behind regression spline is the combination of polynomial regression and step function, which is called piecewise polynomial regression, very basic but providing great degree of flexibility.
+
+A simple example of piecewise polynomial regression with two pieces is:
+
+$y_i= \beta_{01}+\beta_{11}x_i+\dots+\beta_{31}(x_i)^3$ if $x_i<c$,
+$y_i= \beta_{02}+\beta_{12}x_i+\dots+\beta_{32}(x_i)^3$ if $x_i \geq c$
+
+However, one obvious limit with piecewise polynomial regression is that it's discontinuous at the joint point, and when we add the continuity requirement, it becomes the famous "spline."
+
+### Spline
+The simplest example of the spline is the linear spline. Basically, it's a continuous piecewise polynomial function. The basis representation of this funtcion is: 
+
+$y_i=\beta_0+\beta_1b_1(x_i)+\beta_2b_2(x_i)+\dots+\beta_{K+1}b_{K+1}(X_i)$ and 
+$b_1(x)=x$ and $b_{k+1}(x)=(x-\epsilon_k)_{+}$, where $e_k$ is the kth knot.
+
+Another important example is cubic spline with the basis representation:
+$y_i=\beta_0+\beta_1b_1(x_i)+\beta_2b_2(x_i)+\dots+\beta_{K+3}b_{K+3}(X_i)$ and 
+$b_1(x)=x,b_2(x)=x^2,b_3(x)=x^3,b_{k+3}=(x-\epsilon_k)^3$. 
+
+
+```{r}
+#We use bs( ), which generates the entire matrix of the basis function for splines, to perform spline regression, which is in splines library.
+library(splines)
+fit<-lm(wage~bs(age,knots=c(25,40,60)))
+pred<-predict(fit,newdata=list(age=age.grid),se=T)
+se.bands<-cbind(pred$fit-2*pred$se,pred$fit+2*pred$se)
+plot(age,wage,col="darkgrey")
+lines(age.grid,pred$fit,lwd=2,col="red")
+matlines(age.grid,se.bands,lwd=1,col="red",lty=3)
+#Alternatively, 
+#lines(age,grid,pred$fit+2*pred$se,lty="dashed")
+#lines(age,grid,pred$fit-2*pred$se,lty="dashed")
+```
+
+Notice that although we only require linear spline to be continuous, the cubic spline is in fact $\mathcal{C}^2$. We don't get in detail, but the degree of freedom for cubic spline is K+4.
+
+```{r}
+#A verification of the degree of freedom relating to cubic spline (K+4)
+dim(bs(age,knots=c(25,40,60))) #1,x,x^2,x^3,each knot has an additional (x-ek)^3, so 4+3=7 functions in total (df=7). Here "6" didn't count the intercept term. 4+3-1=6
+dim(bs(age,df=7))
+attr(bs(age,df=7),"knots")
+#CAREFUL: df=7 actually means there are 7 basis functions except the intercept term->K+4-1=7, so there are 4 dots
+```
+
+Sometimes we put extra constraint on cubic spline, which results in "natural cubic spline." The constraint is that on the leftmost and rightmost pieces, we require the function to be linear (second derivative=0). Natural cubic spline will have narrower confidence interval on the two side comparing with cubic spline. The degree of freedom for natural cubic splie is simply K.
+
+```{r}
+#Similarly, we use ns( ) to perform natural cubic spline
+attr(ns(age,df=4),"knots")
+fit2<-lm(wage~ns(age,df=4),data=Wage) #just remember, when using ns(), deg of freedom = number of intervals
+summary(fit2)
+pred2<-predict(fit2,newdata=list(age=age.grid),se=T)
+se.bands2<-cbind(pred2$fit-2*pred2$se,pred2$fit+2*pred2$se)
+plot(age,wage,col="darkgrey")
+lines(age.grid,pred$fit,lwd=2,col="red")
+lines(age.grid,pred2$fit,col="blue",lwd=2)
+matlines(age.grid,se.bands,lwd=1,col="red",lty=3)
+matlines(age.grid,se.bands2,lwd=1,col="blue",lty=3)
+# red is cubic spline; blue is natural cubic spline
+```
+
+Smooth spline is another way to improve the model of piecewise polynomial regression. Different from the normal setting of least square minimization, we try to minimize:
+$\sum_{i=1}^n(y_i-g(x_i))^2+\lambda \int g''(t)dt$. The penalty term can be viewed as the wiggling of the graph. By choosing the proper tuning parameter $\lambda$, we can balance the fitting with the smoothness of the graph. In fact, it can be proved that smooth spline is in fact a natural cubic spline with knots at every observation point $x_i$. 
+
+It sounds like smooth spline has a huge degree of freedom. Here we introduce the concept of effective degree of freedom. Let $\hat{g}_{\lambda}=(\hat{x}_1,\dots, \hat{x}_n)$ be the solution to a particular choice of $\lambda$, i.e., it's a vector containing the fitted value at each observation. In fact, there exists a matrix $S_{\lambda}$ so that $\hat{g}_{\lambda}=S_{\lambda}y$, and the effective degree of freedom related to $\lambda$ is defined to be the trace of $S_{\lambda}$, i.e., $df_{\lambda}=\sum_{i=1}^n (S_{\lambda})_{ii}$. The effective degree of freedom can be viewed as the number of parameters that have a real effect on the fitting of the smooth spline. Thus different from the previous setting--the fitting depending on the choosing of the position and number of the knots--, here the problem is to properly choose the tuning parameter $\lambda$, and in fact, if we use Leave-out-one Cross-Validation to choose $\lambda$, we are actually solving:
+
+$\min_{\lambda} RSS_{cv} (\lambda)=\min_{\lambda} \sum_{i=1}^n (y_i-\hat{g}_{\lambda}^{-i}(x_i))^2=\min_{\lambda} \sum_{i=1}^n[\frac{y_i-\hat{g}_{\lambda}(x_i)}{1-(S_{\lambda})_{ii}}]^2$
+
+Here $\hat{g}_{\lambda}^{-i}$ indicates the fitted value at $x_i$ of the smooth spline trained by all the observations except the point $x_i$, while $g_{\lambda}$ here is the smooth spline trained by all the observation. (We can compare this formula to the one we mentioned in Resampling Methods: $CV_{(n)}=\frac{1}{n}\sum_{i=1}^n(\frac{y_i-\hat{y}_i}{1-h_i})^2$)
+
+```{r}
+#We use smooth.spline( ) to perform smooth spline regression
+plot(age,wage,xlim=agelim,cex=0.5,col="darkgrey")
+title("Smoothing Spline")
+fit<-smooth.spline(age,wage,df=16)
+fit2<-smooth.spline(age,wage,cv=TRUE)
+fit2$df
+lines(fit,col="red",lwd=2)
+lines(fit2,col="blue",lwd=2)
+#legend图例
+legend("topright",legend=c("16 DF","6.8 DF"), col=c("red","blue"),lty=1,lwd=2,cex=0.8)
+```
+
+# Local Regression
+
+Local regression is a different approach for fitting flexible nonlinear functions, which involves computing the fit at a target point $x_0$ only using nearby observations. We use a graph to illustrate the idea:
+
+![Alt text](/Users/luyunsheng/Desktop/Winter Stat ML/local.png)
+Here the solid orange point is the observation we try to fit with a local (simple) regression, and the hollow orange points are the points we use to train to regression, which means there are the nearest. The bell-shape yellow shade indicates the weights we put on each point.
+
+```{r}
+
+plot(age,wage,xlim=agelim,cex=0.5,col="darkgrey")
+title("Local Regression")
+fit1<-loess(wage~age,span=0.2)
+summary(fit)
+summary(fit1)
+fit2<-loess(wage~age,span=0.5)
+p<-predict(fit1,newdata=data.frame(age=age.grid),se=TRUE)
+p
+#Although I didn't figure it out, the result is that loess() might be slightly different from other similar functions. I guess when predicting the fit from local regression, one needs to turn a list into numercial values or what, then list causes the error "cannot be coerced to double." In previous cases, newdata=list( ) can be replaced by data.frame( ) 
+lines(age.grid,predict(fit1,data.frame(age=age.grid)),col="red",lwd=2)
+lines(age.grid,predict(fit2,data.frame(age=age.grid)),col="blue",lwd=2)
+legend("topright",legend=c("Span=0.2","Span=0.5"),col=c("red","blue"),lty=1,lwd=2,cex=0.8)
+```
+
+# Generalized Additive Model (GAM)
+The natural way of to extend the basic multiple regression is to turn the model: $y_i=\beta_0+\beta_1x_{i1}+\dots+\beta_px_{ip}+\epsilon_i$ into $y_i=\beta_0+\beta_1f_1(x_{i1})+\dots+\beta_pf_p(x_{ip})+\epsilon_i$, which is called generalized additive model.
+
+However, an obvious limit of GAM is that we assume the relation between each predictors are additivea and the model is linear. The underlying truth might not be true. However, it's easy to solve by simply adding some new predictors. (for example, adding an additive term)
+
+```{r}
+#first see the performance of linear regression with some basis functions
+gam1<-lm(wage~ns(year,4)+ns(age,5)+education)
+# We perform GAM using gam( ) in gam library
+#s() denotes we want to use smooth spline on each individual predictor. 
+library(gam)
+gam.m3<-gam(wage~s(year,4)+s(age,5)+education)
+par(mfrow=c(1,3))
+plot(gam.m3,se=TRUE,col="blue")
+#However, in fact to plot GAM graph, we need to use plot.Gam, here plot recognize GAM and automatically call plot.Gam
+plot.Gam(gam1,se=TRUE,col="red")
+```
+
+```{r}
+#Comparing different models using ANOVA
+gam.m1<-gam(wage~s(age,5)+education)
+gam.m2<-gam(wage~year+s(age,5)+education)
+anova(gam.m1,gam.m2,gam.m3)
+#The result from anova shows that the model with term year is significantly better
+summary(gam.m3)
+```
+
+```{r}
+#Note that we can directly use predict to get the predicted value. Note that this time we fit on all the variables, not just age
+preds<-predict(gam.m2,newdata=Wage)
+```
+
+```{r}
+#Preciously we use smooth spline for to regress over each single predictor, now we could also use local regression
+gam.lo<-gam(wage~s(year,df=4)+lo(age,span=0.7)+education)
+plot.Gam(gam.lo,se=TRUE,col="blue")
+gam.lo.i<-gam(wage~lo(year,age,span=0.5)+education)
+library(akima)
+#akima could draw multidimensional graph. In model gam.lo.i, we fit a local regression surface on year and age term, which records the interaction between them as well
+plot(gam.lo.i)
+#logistic GAM
+gam.lr<-gam(I(wage>250)~year+s(age,df=5)+education,family=binomial)
+par(mfrow=c(1,3))
+plot(gam.lr,se=T,col="green")
+table(education,I(wage>250))
+gam.lr.s<-gam(I(wage>250)~year+s(age,df=5)+education,family=binomial,subset=(education!="1.<HS Grad"))
+plot(gam.lr.s,se=T,col="green")
+
+```
+
+
+
+
+
+
+
+
+

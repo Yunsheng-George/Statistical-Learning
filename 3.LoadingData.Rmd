@@ -1,0 +1,63 @@
+---
+title: "Loading Data"
+author: "Yunsheng Lu"
+date: "2022-12-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+getwd()
+setwd("/Users/luyunsheng/Desktop/Winter Stat ML")
+Auto<-read.table("Auto.data")
+View(Auto) #type in console to view Auto as a spreadsheet in a new r-studio window 
+head(Auto) #works for R Markdown
+```
+
+
+1. header=T means the first line of the data denotes the variable name
+2. na.strings="?" means whenever R meets "?", the entry should be seen as a missing element in the data matrix
+3. stringsAsFactors=T means whenever a variable containing character string should be treated as qualitive
+```{r}
+Auto<-read.table("Auto.data",header=T,na.strings="?",stringsAsFactors=T)
+head(Auto)
+```
+
+4. dim( ): row represents # of observations and columns represents # of variables
+5. names( ): check variable's name
+```{r}
+dim(Auto)
+Auto[1:4,]
+Auto<-na.omit(Auto) #data matrix with NA omitted
+Auto
+dim(Auto)
+names(Auto)
+```
+
+6. "$": We must use "$" to refer to a variable in a given data matrix
+7.attach( ): setting a given data matrix to be the default (no need for "$")
+8.as.factor( ): turn a numerical variable into categorical
+```{r}
+plot(Auto$year,Auto$mpg)
+attach(Auto)
+plot(cylinders,mpg)
+cylinders<-as.factor(cylinders)
+plot(cylinders,mpg) #when plotting categorical variable, the default is boxplot
+```
+
+9. varwidth=T: adjust the width of the box to the sample size
+```{r}
+plot(cylinders,mpg,varwidth=T)
+plot(cylinders,mpg,col="blue", varwidth=T, xlab="cylinders", ylab="MPG")
+```
+
+10. summary( ): provide a numerical summary of each variable in a data matrix
+```{r}
+summary(Auto)
+summary(mpg)
+```
+

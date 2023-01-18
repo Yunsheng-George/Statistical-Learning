@@ -1,0 +1,95 @@
+---
+title: "Graphics"
+author: "Yunsheng Lu"
+date: "2022-12-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1.plot( ): plot a scatter plot of x against y.
+```{r}
+x<-rnorm(100)
+y<-rnorm(100)
+plot(x,y,xlab="x-axis",ylab="y-axis")
+```
+
+2.pdf(): create pdf
+```{r}
+pdf("Figure.pdf")
+plot(x,y,col="green")
+dev.off()
+```
+
+3.seq( ): create an interval with given steps
+```{r}
+x<-seq(-pi,pi,length=10)
+x
+```
+
+4.contour( ): create 3d-plots
+```{r}
+y<-x
+f<-outer(x,y,function(x,y) cos(y)/(1+x^2)) #a special use of outer( )
+#cos(y)/(1+x^2), the value of the function, is the third coordinate
+f #f here is a matrix whose entry is the function value of corresponding x,y
+contour(x,y,f)
+contour(x,y,f, nlevels=10)
+fa<-(f-t(f))/2
+contour(x,y,fa,col="lightgray", nlevels=15) #if add=TRUE, then the grey curve will be added to the previous graph
+```
+
+5.image( ): create colored 3d-plots
+```{r}
+image(x,y,fa)
+persp(x,y,fa,theta=30)
+persp(x,y,fa,theta=30,phi=40)
+```
+
+--------------------------------------------------------------------------------
+Loading Data
+```{r}
+getwd()
+setwd("/Users/luyunsheng/Desktop/Winter Stat ML")
+Auto<-read.table("Auto.data",header=T,na.strings="?",stringsAsFactors=T)
+```
+
+6."$": We must use "$" to refer to a variable in a given data matrix
+7.attach( ): setting a given data matrix to be the default (no need for "$")
+8.as.factor( ): turn a numerical variable into categorical
+```{r}
+plot(Auto$year,Auto$mpg)
+attach(Auto)
+plot(cylinders,mpg)
+cylinders<-as.factor(cylinders)
+plot(cylinders,mpg) #when plotting categorical variable, the default is boxplot
+```
+
+9. varwidth=T: adjust the width of the box to the sample size
+```{r}
+plot(cylinders,mpg,varwidth=T)
+plot(cylinders,mpg,col="blue", varwidth=T, xlab="cylinders", ylab="MPG")
+```
+
+10. hist( ): plot histagram
+```{r}
+hist(mpg)
+hist(mpg,col=2)
+hist(mpg,col=2,breaks=15) #break denotes the number of cut-off points for a histagram
+```
+
+11. pairs( ): create scatterplot for every pair of variables (also called scatterplot matrix)
+```{r}
+pairs(Auto)
+pairs(~mpg+displacement+weight,data=Auto) #sub-scatterplot matrix
+```
+
+12. identify(): identify the value/other properties of a point on a scatter plot
+```{r}
+plot(horsepower,mpg)
+identify(horsepower,mpg,name) #works for console. if clicked, the point will show the associated name
+identify(horsepower,mpg,n=3) #If clicked, up to 3 points will show the associated value of mpg
+
+```
